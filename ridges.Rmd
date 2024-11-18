@@ -1,0 +1,179 @@
+---
+title: "Ridges"
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  cache = FALSE
+)
+```
+
+# Trade styles
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+Crating ridges after the code of [Georgios Karamanis](https://github.com/gkaramanis/aRtist/tree/main/genuary).
+
+The code is so simple and elegant!
+
+I will use the following packages:
+```{r load-packages, cache = FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library(dplyr)
+library(imager) # Working with images
+#library(magick)
+library(MexBrewer)
+library(ggridges)
+```
+
+## Image processing
+
+First, read the image using `imager::load.image()`:
+```{r}
+# Name of the image
+im_name <- "julieta-6"
+# Read named image
+im <- load.image(glue::glue(here::here(), "/source-images/{im_name}.jpg"))
+```
+
+Display the image information:
+```{r}
+im
+```
+
+Select part of image if desired
+```{r eval=FALSE}
+im <- im %>%
+  imsub(x < 1501, y > 548)
+```
+
+
+Plot the image. Some of the images are courtesy of my talented cousin [Dolores Robles Martinez](https://www.instagram.com/doloresrobles_m/?hl=en):
+```{r}
+plot(im)
+```
+
+Get dimensions of image:
+```{r}
+img_w <- width(im)
+img_h <- height(im)
+img_ratio <- img_w / img_h
+```
+
+Resize the longest dimension:
+```{r}
+if (img_w >= img_h) {
+  im <- imresize(im, scale = 180/img_w)
+} else {
+  im <- imresize(im, scale = 180/img_h)
+}
+```
+
+Convert the image to grayscale and then to a dataframe, store grayscale values:
+```{r}
+im_df <- im %>%
+  grayscale() %>% 
+  as.data.frame() %>%
+  # Reverse the y axis; conventionally, images index the pixel starting from the top-left corner of the image
+  mutate(y = -(y - max(y)))
+```
+
+Convert image to a data frame again and now retrieve the strings with the hexadecimal color names:
+```{r}
+color_df <- im %>%
+  as.data.frame(wide="c") %>% 
+  # Reverse the y axis; retrieve the color channels and save as strings with the hexadecimal name of the colors
+  mutate(y = -(y - max(y)),
+         hex_color = rgb(c.1,
+                         c.2,
+                         c.3))
+```
+
+Bind the hexadecimal colors to the data frame with the image:
+```{r}
+im_df$hex_color <- color_df$hex_color
+```
+
+Plot the image using the data frame and grayscale values:
+```{r}
+ggplot() + 
+  geom_point(data = im_df,
+             aes(x,
+                 y,
+                 color = value)) + 
+  coord_equal()
+```
+
+## Convert to ridges
+
+Colors, fill and background, use palette `Frida`:
+```{r}
+col_palette <- mex.brewer("Frida")
+col_fill <- col_palette[6]
+```
+
+Render:
+```{r}
+im_df %>%
+  filter(y %% 2 == 0) %>%
+ggplot() +
+  geom_rect(aes(xmin = 0 + 2, xmax = max(x),
+                ymin = 0 - 2, ymax = max(y)),
+            fill = col_fill) +
+  geom_ridgeline_gradient(aes(x, 
+                              y, 
+                              height = value * 4,
+                              group = y, 
+                              fill = value), 
+                          color = col_palette[1],
+                          size = 0.35) +
+  #scale_y_reverse() +
+  scale_fill_gradientn(colours = rev(col_palette)) +
+  coord_equal() +
+  theme_void() +
+  theme(legend.position = "none")  
+
+# Save named image
+ggsave(glue::glue(here::here(), "/output/{im_name}-ridges-monotone.png"),
+       height = 7,
+       width = 7,
+       units = "in")
+```
+
+Render with original colors:
+```{r}
+seed <- sample.int(10000000, 1)
+set.seed(seed = seed)
+
+im_df %>%
+  filter(y %% 2 == 0) %>%
+ggplot() +
+  geom_rect(aes(xmin = 0 + 2, xmax = max(x),
+                ymin = 0 - 2, ymax = max(y)),
+            fill = col_fill) +
+  geom_ridgeline_gradient(aes(x, 
+                              y, 
+                              height = value * 3,
+                              group = y, 
+                              fill = hex_color), 
+                          color = "black",#col_palette[sample.int(length(col_palette), 1)],
+                          size = 0.35) +
+  #scale_y_reverse() +
+  # IMPORTANT: The colors are given by the names of colors in hexadecimal; use `scale_color_identity`
+  scale_fill_identity() +
+  #scale_fill_gradientn(colours = rev(col_palette)) +
+  coord_equal() +
+  theme_void() +
+  theme(legend.position = "none")  
+
+# Save named image
+ggsave(glue::glue(here::here(), "/output/{im_name}-ridges-colors-{seed}.png"),
+       height = 7,
+       width = 7,
+       units = "in")
+```
